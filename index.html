@@ -22,7 +22,12 @@
             </span>
             <span>линия<span class="brand-period">.</span></span>
           </a>
-          <span id="connection-indicator" class="connection-indicator" title="Подключение к базе" aria-label="Подключение к базе"></span>
+          <div class="sidebar-tools">
+            <button id="settings-button" class="settings-button" type="button" aria-label="Открыть настройки" title="Настройки" hidden>
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M8.3 2.8h3.4l.4 1.8c.5.2 1 .5 1.4.8l1.8-.6 1.7 2.9-1.4 1.2a6 6 0 0 1 0 1.7l1.4 1.2-1.7 2.9-1.8-.6c-.4.3-.9.6-1.4.8l-.4 1.8H8.3l-.4-1.8a6 6 0 0 1-1.4-.8l-1.8.6L3 11.8l1.4-1.2a6 6 0 0 1 0-1.7L3 7.7l1.7-2.9 1.8.6c.4-.3.9-.6 1.4-.8l.4-1.8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="10" cy="9.8" r="2.2" stroke="currentColor" stroke-width="1.3"/></svg>
+            </button>
+            <span id="connection-indicator" class="connection-indicator" title="Подключение к базе" aria-label="Подключение к базе"></span>
+          </div>
         </header>
 
         <section class="account-strip" aria-label="Ваш профиль">
@@ -104,6 +109,58 @@
         </div>
       </section>
     </main>
+
+    <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+      <div class="settings-surface">
+        <header class="settings-header">
+          <div>
+            <p class="eyebrow">ПЕРСОНАЛЬНО</p>
+            <h2 id="settings-title">Настройки</h2>
+          </div>
+          <button id="settings-close" class="settings-close" type="button" aria-label="Закрыть настройки" title="Закрыть">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </header>
+
+        <section class="settings-group" aria-labelledby="accent-heading">
+          <div class="settings-group-copy">
+            <h3 id="accent-heading">Цвет акцента</h3>
+            <p>Выбери цвет кнопок и выделений</p>
+          </div>
+          <div class="accent-options" role="group" aria-label="Цвет акцента">
+            <button class="accent-option" type="button" data-accent-choice="mint" aria-label="Мятный акцент" title="Мятный"><span class="accent-swatch swatch-mint"></span>Мята</button>
+            <button class="accent-option" type="button" data-accent-choice="amber" aria-label="Янтарный акцент" title="Янтарный"><span class="accent-swatch swatch-amber"></span>Янтарь</button>
+            <button class="accent-option" type="button" data-accent-choice="coral" aria-label="Коралловый акцент" title="Коралловый"><span class="accent-swatch swatch-coral"></span>Коралл</button>
+          </div>
+        </section>
+
+        <section class="settings-group settings-notifications" aria-labelledby="notifications-heading">
+          <div class="settings-group-copy">
+            <h3 id="notifications-heading">Уведомления</h3>
+            <p>Настройки сохраняются в этом браузере</p>
+          </div>
+          <label class="setting-toggle">
+            <span><strong>Звук сообщения</strong><small>Короткий сигнал при новом сообщении</small></span>
+            <input id="sound-setting" type="checkbox" />
+            <span class="toggle-track" aria-hidden="true"></span>
+          </label>
+          <label class="setting-toggle">
+            <span><strong>Уведомления браузера</strong><small id="notification-status">Показывать, когда вкладка неактивна</small></span>
+            <input id="notification-setting" type="checkbox" />
+            <span class="toggle-track" aria-hidden="true"></span>
+          </label>
+        </section>
+
+        <section class="settings-group settings-account" aria-labelledby="account-heading">
+          <h3 id="account-heading">Аккаунт</h3>
+          <dl class="account-details">
+            <div><dt>Имя в чате</dt><dd id="settings-username">—</dd></div>
+            <div><dt>Email для входа</dt><dd id="settings-email">—</dd></div>
+          </dl>
+          <button id="signout-button" class="signout-button" type="button">Выйти из аккаунта</button>
+        </section>
+      </div>
+    </dialog>
 
     <div id="setup-screen" class="setup-screen" hidden>
       <form id="setup-form" class="setup-card">
