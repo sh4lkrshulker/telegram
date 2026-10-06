@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f6f2" />
+    <meta name="description" content="Простой мессенджер для коротких личных разговоров." />
+    <title>Линия — личные сообщения</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <main class="messenger" aria-label="Мессенджер Линия">
+      <aside class="sidebar" aria-label="Контакты и чаты">
+        <header class="sidebar-header">
+          <a class="brand" href="./" aria-label="Линия, главная">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M7 9.5h18v11H15l-5.5 4v-4H7v-11Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 15h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </span>
+            <span>линия<span class="brand-period">.</span></span>
+          </a>
+          <span id="connection-indicator" class="connection-indicator" title="Подключение к базе" aria-label="Подключение к базе"></span>
+        </header>
+
+        <section class="account-strip" aria-label="Ваш профиль">
+          <div id="my-avatar" class="avatar avatar-small">?</div>
+          <div class="account-copy">
+            <span class="eyebrow">Вы в сети как</span>
+            <strong id="my-username">Подключаемся...</strong>
+          </div>
+          <span class="online-dot" aria-hidden="true"></span>
+        </section>
+
+        <section class="people-section" aria-labelledby="people-heading">
+          <div class="section-heading">
+            <h2 id="people-heading">Найти человека</h2>
+            <span class="keyboard-hint">по имени</span>
+          </div>
+          <label class="search-box">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.8" cy="8.8" r="5.8" stroke="currentColor" stroke-width="1.6"/><path d="m13.2 13.2 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <input id="user-search" type="search" placeholder="Например, brat_1" autocomplete="off" maxlength="20" aria-label="Поиск пользователей по имени" />
+            <kbd>/</kbd>
+          </label>
+          <div id="search-results" class="people-list search-results" aria-live="polite" hidden></div>
+          <p id="search-hint" class="search-hint">Начни вводить имя пользователя</p>
+        </section>
+
+        <section class="chats-section" aria-labelledby="chats-heading">
+          <div class="section-heading chats-heading">
+            <h2 id="chats-heading">Сообщения</h2>
+            <span id="chat-count" class="chat-count">0</span>
+          </div>
+          <div id="chat-list" class="people-list chat-list" aria-live="polite">
+            <p class="list-placeholder">Здесь появятся ваши диалоги</p>
+          </div>
+        </section>
+
+        <footer class="sidebar-footer">
+          <span class="footer-spark" aria-hidden="true">✳</span>
+          <span>Просто поговорить.</span>
+        </footer>
+      </aside>
+
+      <section id="chat-panel" class="chat-panel" aria-label="Переписка">
+        <div id="empty-state" class="empty-state">
+          <div class="empty-art" aria-hidden="true">
+            <div class="art-sun"></div>
+            <div class="art-bubble art-bubble-one"><span></span><span></span><span></span></div>
+            <div class="art-bubble art-bubble-two"><span></span><span></span></div>
+            <div class="art-line"></div>
+          </div>
+          <p class="eyebrow">Тут начинается разговор</p>
+          <h1>Найди своего<br /><span>человека.</span></h1>
+          <p class="empty-copy">Введи его имя слева — и отправь первое сообщение.</p>
+          <div class="empty-footnote"><span class="online-dot"></span>Сообщения сохраняются в облаке</div>
+        </div>
+
+        <div id="conversation" class="conversation" hidden>
+          <header class="conversation-header">
+            <button id="back-button" class="back-button" type="button" aria-label="Назад к чатам" title="Назад к чатам">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m12.5 4.5-5.5 5.5 5.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div id="conversation-avatar" class="avatar">?</div>
+            <div class="conversation-person">
+              <h2 id="conversation-name">Пользователь</h2>
+              <p><span class="online-dot"></span>личный диалог</p>
+            </div>
+            <span class="conversation-label">ЛИЧНОЕ</span>
+          </header>
+          <div id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions text"></div>
+          <form id="message-form" class="composer">
+            <label class="message-input-wrap">
+              <span class="sr-only">Текст сообщения</span>
+              <input id="message-input" type="text" maxlength="2000" placeholder="Напиши что-нибудь хорошее..." autocomplete="off" />
+            </label>
+            <span id="message-counter" class="message-counter">0 / 2000</span>
+            <button class="send-button" type="submit" aria-label="Отправить сообщение" title="Отправить сообщение">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m21 3-7.2 18-3.7-7.1L3 10.2 21 3Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="m10.1 13.9 4.6-4.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </button>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <div id="setup-screen" class="setup-screen" hidden>
+      <form id="setup-form" class="setup-card">
+        <div class="setup-logo brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none"><path d="M7 9.5h18v11H15l-5.5 4v-4H7v-11Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 15h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <p class="eyebrow" id="setup-eyebrow">Свой аккаунт — свои разговоры</p>
+        <h1 id="setup-title">Как тебя<br /><span>найти?</span></h1>
+        <p id="setup-copy" class="setup-copy">Укажи email для входа, придумай пароль и выбери имя, по которому тебя найдут друзья.</p>
+        <label id="email-field" class="username-field">
+          <span>EMAIL</span>
+          <div><input id="email-input" type="email" placeholder="name@example.com" maxlength="254" autocomplete="email" required /></div>
+        </label>
+        <label id="username-field" class="username-field">
+          <span>ТВОЁ ИМЯ</span>
+          <div><span>@</span><input id="username-input" type="text" placeholder="brat_1" minlength="3" maxlength="20" autocomplete="off" autocapitalize="none" spellcheck="false" required /></div>
+        </label>
+        <p id="username-note" class="username-note">3–20 символов: латинские буквы, цифры и _</p>
+        <label class="username-field password-field">
+          <span>ПАРОЛЬ</span>
+          <div><input id="password-input" type="password" placeholder="Не менее 8 символов" minlength="8" maxlength="72" autocomplete="new-password" required /></div>
+        </label>
+        <p id="password-note" class="username-note">Пароль сохраняется в Supabase Auth.</p>
+        <p id="setup-error" class="setup-error" role="alert" hidden></p>
+        <button id="setup-button" class="setup-button" type="submit"><span id="setup-button-label">Создать аккаунт</span><span aria-hidden="true">→</span></button>
+        <button id="auth-toggle" class="auth-toggle" type="button">Уже есть аккаунт? Войти</button>
+        <p class="setup-privacy">Email нужен для входа и подтверждения аккаунта. Юзернейм виден собеседникам.</p>
+      </form>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
