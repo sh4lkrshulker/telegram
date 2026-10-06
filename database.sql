@@ -7,6 +7,12 @@ create table if not exists public.chat_profiles (
   avatar_emoji text check (char_length(avatar_emoji) <= 4),
   created_at timestamptz not null default now()
 );
+alter table public.chat_profiles add column if not exists display_name text
+  check (char_length(display_name) <= 40);
+alter table public.chat_profiles add column if not exists bio text
+  check (char_length(bio) <= 240);
+alter table public.chat_profiles add column if not exists avatar_emoji text
+  check (char_length(avatar_emoji) <= 4);
 create unique index if not exists chat_profiles_username_lower_idx
   on public.chat_profiles (lower(username));
 
@@ -39,7 +45,7 @@ insert into public.chat_gift_catalog (code, title, icon, points) values
 on conflict (code) do update set title = excluded.title, icon = excluded.icon, points = excluded.points;
 
 create table if not exists public.chat_messages (
-  id bigint generated always as identity primary key,
+  id uuid primary key default gen_random_uuid(),
   sender_id uuid not null references public.chat_profiles(user_id) on delete cascade,
   recipient_id uuid not null references public.chat_profiles(user_id) on delete cascade,
   body text not null check (char_length(body) between 1 and 2000),
@@ -48,6 +54,12 @@ create table if not exists public.chat_messages (
   created_at timestamptz not null default now(),
   check (sender_id <> recipient_id)
 );
+alter table public.chat_messages add column if not exists message_type text not null default 'text';
+alter table public.chat_messages add column if not exists gift_code text
+  references public.chat_gift_catalog(code);
+alter table public.chat_messages drop constraint if exists chat_messages_message_type_check;
+alter table public.chat_messages add constraint chat_messages_message_type_check
+  check (message_type in ('text', 'gift'));
 create index if not exists chat_messages_sender_idx on public.chat_messages(sender_id, created_at desc);
 create index if not exists chat_messages_recipient_idx on public.chat_messages(recipient_id, created_at desc);
 
@@ -57,9 +69,23 @@ create table if not exists public.chat_gifts (
   recipient_id uuid not null references public.chat_profiles(user_id),
   gift_code text not null references public.chat_gift_catalog(code),
   points integer not null check (points > 0),
-  message_id bigint references public.chat_messages(id) on delete set null,
+  message_id uuid references public.chat_messages(id) on delete set null,
   created_at timestamptz not null default now()
 );
+alter table public.chat_gifts drop constraint if exists chat_gifts_message_id_fkey;
+do $$
+declare
+  message_id_type text;
+begin
+  select data_type into message_id_type
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'chat_gifts' and column_name = 'message_id';
+  if message_id_type is distinct from 'uuid' then
+    alter table public.chat_gifts alter column message_id type uuid using null::uuid;
+  end if;
+end $$;
+alter table public.chat_gifts add constraint chat_gifts_message_id_fkey
+  foreign key (message_id) references public.chat_messages(id) on delete set null;
 
 create table if not exists public.chat_rooms (
   id uuid primary key default gen_random_uuid(),
@@ -135,6 +161,28 @@ alter table public.chat_rooms enable row level security;
 alter table public.chat_room_members enable row level security;
 alter table public.room_messages enable row level security;
 
+do $$
+declare
+  existing_policy record;
+begin
+  for existing_policy in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in (
+        'chat_profiles', 'chat_wallets', 'chat_points_ledger', 'chat_gift_catalog',
+        'chat_messages', 'chat_gifts', 'chat_rooms', 'chat_room_members', 'room_messages'
+      )
+  loop
+    execute format(
+      'drop policy %I on %I.%I',
+      existing_policy.policyname,
+      existing_policy.schemaname,
+      existing_policy.tablename
+    );
+  end loop;
+end $$;
+
 drop policy if exists "Profiles visible to authenticated users" on public.chat_profiles;
 create policy "Profiles visible to authenticated users" on public.chat_profiles
 for select to authenticated using (true);
@@ -188,7 +236,7 @@ as $$
 declare
   gift public.chat_gift_catalog%rowtype;
   available integer;
-  gift_message_id bigint;
+  gift_message_id uuid;
 begin
   if auth.uid() is null or p_recipient_id = auth.uid() then
     raise exception 'Недопустимый получатель подарка';
@@ -335,7 +383,19 @@ grant select on public.chat_profiles, public.chat_messages, public.chat_gift_cat
   public.chat_room_members, public.room_messages to authenticated;
 grant insert, update on public.chat_profiles to authenticated;
 grant insert on public.chat_messages, public.room_messages to authenticated;
-grant usage, select on sequence public.chat_messages_id_seq, public.room_messages_id_seq to authenticated;
+do $$
+declare
+  sequence_name text;
+begin
+  sequence_name := pg_get_serial_sequence('public.chat_messages', 'id');
+  if sequence_name is not null then
+    execute format('grant usage, select on sequence %s to authenticated', sequence_name::regclass);
+  end if;
+  sequence_name := pg_get_serial_sequence('public.room_messages', 'id');
+  if sequence_name is not null then
+    execute format('grant usage, select on sequence %s to authenticated', sequence_name::regclass);
+  end if;
+end $$;
 revoke all on function public.admin_list_chat_users(text) from public, anon;
 revoke all on function public.admin_grant_chat_points(text, uuid, integer) from public, anon;
 revoke all on function public.send_chat_gift(uuid, text) from public, anon;
