@@ -9,6 +9,16 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const ui = {
   messenger: document.querySelector('.messenger'),
   indicator: document.querySelector('#connection-indicator'),
+  settingsButton: document.querySelector('#settings-button'),
+  settingsDialog: document.querySelector('#settings-dialog'),
+  settingsClose: document.querySelector('#settings-close'),
+  accentOptions: document.querySelectorAll('[data-accent-choice]'),
+  soundSetting: document.querySelector('#sound-setting'),
+  notificationSetting: document.querySelector('#notification-setting'),
+  notificationStatus: document.querySelector('#notification-status'),
+  settingsUsername: document.querySelector('#settings-username'),
+  settingsEmail: document.querySelector('#settings-email'),
+  signoutButton: document.querySelector('#signout-button'),
   myAvatar: document.querySelector('#my-avatar'),
   myUsername: document.querySelector('#my-username'),
   search: document.querySelector('#user-search'),
@@ -51,7 +61,142 @@ let authMode = 'signup';
 let toastTimer;
 let searchTimer;
 let refreshTimer;
+let preferences = { accent: 'mint', sound: false, notifications: false };
 const recentProfiles = new Map();
+
+// Акценты меняют только цвета действий; нейтральная тёмная тема остаётся прежней.
+const ACCENT_COLORS = {
+  mint: { main: '#b5e66c', hover: '#96c94e', soft: '#293526', text: '#d0ecaa' },
+  amber: { main: '#f1c477', hover: '#d9a94f', soft: '#3a3021', text: '#f4d9a6' },
+  coral: { main: '#ff896b', hover: '#e56e51', soft: '#3b2823', text: '#ffc1ae' },
+};
+
+// Настройки интерфейса хранятся отдельно для каждого аккаунта в текущем браузере.
+function preferenceStorageKey() {
+  return `linea-settings-${currentUser.id}`;
+}
+
+function savePreferences() {
+  try {
+    localStorage.setItem(preferenceStorageKey(), JSON.stringify(preferences));
+  } catch {
+    showToast('Браузер не разрешил сохранить настройки.', true);
+  }
+}
+
+function applyAccent(accent) {
+  const colors = ACCENT_COLORS[accent] || ACCENT_COLORS.mint;
+  preferences.accent = ACCENT_COLORS[accent] ? accent : 'mint';
+  const root = document.documentElement;
+  root.style.setProperty('--green', colors.main);
+  root.style.setProperty('--green-dark', colors.hover);
+  root.style.setProperty('--green-soft', colors.soft);
+  root.style.setProperty('--accent-text', colors.text);
+  ui.accentOptions.forEach((button) => {
+    const selected = button.dataset.accentChoice === preferences.accent;
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+}
+
+// Загружает сохранённые параметры и заполняет сведения об аккаунте в настройках.
+function loadPreferences() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(preferenceStorageKey()) || '{}');
+    preferences = {
+      accent: ACCENT_COLORS[saved.accent] ? saved.accent : 'mint',
+      sound: saved.sound === true,
+      notifications: saved.notifications === true,
+    };
+  } catch {
+    preferences = { accent: 'mint', sound: false, notifications: false };
+  }
+
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+    preferences.notifications = false;
+  }
+  applyAccent(preferences.accent);
+  ui.soundSetting.checked = preferences.sound;
+  ui.notificationSetting.checked = preferences.notifications;
+  ui.notificationSetting.disabled = typeof Notification === 'undefined' || Notification.permission === 'denied';
+  ui.notificationStatus.textContent = typeof Notification === 'undefined'
+    ? 'Этот браузер не поддерживает уведомления'
+    : Notification.permission === 'denied'
+      ? 'Разреши уведомления для сайта в настройках браузера'
+      : 'Показывать, когда вкладка неактивна';
+  ui.settingsUsername.textContent = `@${myProfile.username}`;
+  ui.settingsEmail.textContent = currentUser.email || 'Email не указан';
+}
+
+function openSettings() {
+  loadPreferences();
+  ui.settingsDialog.showModal();
+}
+
+// Проигрывает короткий сигнал без внешних аудиофайлов.
+function playMessageSound() {
+  try {
+    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextConstructor) return;
+    const context = new AudioContextConstructor();
+    const oscillator = context.createOscillator();
+    const volume = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 740;
+    volume.gain.setValueAtTime(0.035, context.currentTime);
+    volume.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.16);
+    oscillator.connect(volume);
+    volume.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.16);
+    oscillator.addEventListener('ended', () => context.close(), { once: true });
+  } catch {
+    // Уведомление остаётся доступным, даже если браузер блокирует аудио.
+  }
+}
+
+function notifyIncomingMessage(message) {
+  if (message.sender_id === currentUser.id || message.recipient_id !== currentUser.id) return;
+  if (preferences.sound) playMessageSound();
+  if (!preferences.notifications || !document.hidden || Notification.permission !== 'granted') return;
+
+  const sender = recentProfiles.get(message.sender_id);
+  const notification = new Notification(sender ? `@${sender.username}` : 'Новое сообщение', {
+    body: message.body,
+    tag: `linea-${message.sender_id}`,
+  });
+  notification.onclick = () => {
+    window.focus();
+    if (sender) openConversation(sender);
+    notification.close();
+  };
+}
+
+async function signOut() {
+  ui.signoutButton.disabled = true;
+  const { error } = await supabase.auth.signOut();
+  ui.signoutButton.disabled = false;
+  if (error) {
+    showToast(`Не удалось выйти: ${error.message}`, true);
+    return;
+  }
+
+  ui.emailInput.value = currentUser.email || '';
+  currentUser = null;
+  myProfile = null;
+  activeProfile = null;
+  recentProfiles.clear();
+  ui.settingsButton.hidden = true;
+  ui.myAvatar.replaceWith(makeAvatar('?', 'avatar-small', 'my-avatar'));
+  ui.myAvatar = document.querySelector('#my-avatar');
+  ui.settingsDialog.close();
+  ui.messenger.classList.remove('chat-open');
+  ui.conversation.hidden = true;
+  ui.emptyState.hidden = false;
+  ui.myUsername.textContent = 'Не выполнен вход';
+  setAuthMode('login');
+  showSetup();
+}
 
 // Меняет цвет индикатора соединения возле названия приложения.
 function setConnection(state) {
@@ -137,8 +282,10 @@ async function startApp(profile) {
   ui.myUsername.textContent = `@${profile.username}`;
   ui.myAvatar.replaceWith(makeAvatar(profile.username, 'avatar-small', 'my-avatar'));
   ui.myAvatar = document.querySelector('#my-avatar');
+  ui.settingsButton.hidden = false;
   ui.setupScreen.hidden = true;
   setConnection('connected');
+  loadPreferences();
   await loadChats();
   subscribeToMessages();
 }
@@ -477,7 +624,8 @@ async function sendMessage(event) {
 function subscribeToMessages() {
   supabase
     .channel(`messages-${currentUser.id}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, () => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, (payload) => {
+      if (payload.eventType === 'INSERT' && payload.new) notifyIncomingMessage(payload.new);
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         loadChats();
@@ -550,6 +698,49 @@ async function initialize() {
 // Обработчики авторизации, поиска, отправки сообщений и навигации по чатам.
 ui.setupForm.addEventListener('submit', authenticate);
 ui.authToggle.addEventListener('click', () => setAuthMode(authMode === 'signup' ? 'login' : 'signup'));
+ui.settingsButton.addEventListener('click', openSettings);
+ui.settingsClose.addEventListener('click', () => ui.settingsDialog.close());
+ui.settingsDialog.addEventListener('click', (event) => {
+  if (event.target === ui.settingsDialog) ui.settingsDialog.close();
+});
+ui.accentOptions.forEach((button) => {
+  button.addEventListener('click', () => {
+    applyAccent(button.dataset.accentChoice);
+    savePreferences();
+  });
+});
+ui.soundSetting.addEventListener('change', () => {
+  preferences.sound = ui.soundSetting.checked;
+  savePreferences();
+});
+ui.notificationSetting.addEventListener('change', async () => {
+  if (!ui.notificationSetting.checked) {
+    preferences.notifications = false;
+    savePreferences();
+    return;
+  }
+
+  if (typeof Notification === 'undefined' || !window.isSecureContext) {
+    ui.notificationSetting.checked = false;
+    showToast('Браузерные уведомления доступны только на HTTPS-сайте.', true);
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    preferences.notifications = permission === 'granted';
+    ui.notificationSetting.checked = preferences.notifications;
+    ui.notificationStatus.textContent = permission === 'denied'
+      ? 'Разреши уведомления для сайта в настройках браузера'
+      : 'Показывать, когда вкладка неактивна';
+    savePreferences();
+    if (!preferences.notifications) showToast('Браузер не разрешил уведомления.', true);
+  } catch {
+    preferences.notifications = false;
+    ui.notificationSetting.checked = false;
+    showToast('Не удалось запросить разрешение уведомлений.', true);
+  }
+});
+ui.signoutButton.addEventListener('click', signOut);
 ui.messageForm.addEventListener('submit', sendMessage);
 ui.messageInput.addEventListener('input', updateCounter);
 ui.search.addEventListener('input', () => {
