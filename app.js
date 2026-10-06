@@ -39,8 +39,12 @@ const ui = {
   adminPanel: document.querySelector('#admin-panel'),
   adminUsers: document.querySelector('#admin-users'),
   adminUserCount: document.querySelector('#admin-user-count'),
-  createRoomButton: document.querySelector('#create-room-button'),
-  discoverRoomsButton: document.querySelector('#discover-rooms-button'),
+  mainMenuButton: document.querySelector('#main-menu-button'),
+  mainMenu: document.querySelector('#main-menu'),
+  roomTypeOptions: document.querySelectorAll('[data-room-type]'),
+  roomCreateSubmit: document.querySelector('#room-create-submit'),
+  roomFormSubtitle: document.querySelector('#room-form-subtitle'),
+  giftEffects: document.querySelector('#gift-effects'),
   roomList: document.querySelector('#room-list'),
   roomDialog: document.querySelector('#room-dialog'),
   roomForm: document.querySelector('#room-form'),
@@ -199,7 +203,11 @@ function playMessageSound() {
 
 function notifyIncomingMessage(message) {
   if (message.sender_id === currentUser.id || message.recipient_id !== currentUser.id) return;
-  if (message.message_type === 'gift') loadPoints();
+  if (message.message_type === 'gift') {
+    loadPoints();
+    if (activeProfile?.user_id === message.sender_id) animateGift(message.body, 'received');
+    else showToast(`Тебе отправили подарок ${message.body}`);
+  }
   if (preferences.sound) playMessageSound();
   if (!preferences.notifications || !document.hidden || Notification.permission !== 'granted') return;
 
@@ -796,6 +804,42 @@ async function openGiftPicker() {
   ui.giftDialog.showModal();
 }
 
+function animateGift(gift, direction = 'sent') {
+  const [icon = '🎁', ...titleParts] = gift.trim().split(/\s+/);
+  const title = titleParts.join(' ') || (direction === 'sent' ? 'Подарок отправлен!' : 'Тебе подарок!');
+  const celebration = document.createElement('div');
+  celebration.className = `gift-celebration gift-celebration-${direction}`;
+  celebration.setAttribute('role', 'status');
+  const card = document.createElement('div');
+  card.className = 'gift-celebration-card';
+  const largeIcon = document.createElement('span');
+  largeIcon.className = 'gift-celebration-icon';
+  largeIcon.textContent = icon;
+  const heading = document.createElement('strong');
+  heading.textContent = direction === 'sent' ? 'Подарок отправлен' : 'Новый подарок!';
+  const caption = document.createElement('span');
+  caption.textContent = title;
+  card.append(largeIcon, heading, caption);
+  const particles = document.createElement('div');
+  particles.className = 'gift-particles';
+  for (let index = 0; index < 14; index += 1) {
+    const particle = document.createElement('i');
+    const angle = (Math.PI * 2 * index) / 14;
+    const distance = 78 + ((index * 17) % 70);
+    particle.style.setProperty('--particle-x', `${Math.cos(angle) * distance}px`);
+    particle.style.setProperty('--particle-y', `${Math.sin(angle) * distance}px`);
+    particle.style.setProperty('--particle-delay', `${(index % 5) * 35}ms`);
+    particle.textContent = ['✦', '·', '✧'][index % 3];
+    particles.append(particle);
+  }
+  celebration.append(particles, card);
+  ui.giftEffects.append(celebration);
+  celebration.addEventListener('animationend', (event) => {
+    if (event.target === celebration) celebration.remove();
+  }, { once: true });
+  window.setTimeout(() => celebration.remove(), 2600);
+}
+
 async function sendGift(gift) {
   const { error } = await supabase.rpc('send_chat_gift', {
     p_recipient_id: activeProfile.user_id,
@@ -806,6 +850,7 @@ async function sendGift(gift) {
     return;
   }
   ui.giftDialog.close();
+  animateGift(`${gift.icon} ${gift.title}`);
   showToast(`${gift.icon} Подарок «${gift.title}» отправлен!`);
   await loadPoints();
   await loadMessages();
@@ -1004,11 +1049,42 @@ async function createRoom(event) {
     return;
   }
   ui.roomForm.reset();
-  ui.roomKind.value = 'group';
-  ui.permissionSend.disabled = false;
+  setRoomCreationType('group');
   ui.roomDialog.close();
   await loadRooms();
   openRoom(data);
+}
+
+function setRoomCreationType(kind) {
+  ui.roomKind.value = kind;
+  const isChannel = kind === 'channel';
+  ui.roomTypeOptions.forEach((button) => {
+    const selected = button.dataset.roomType === kind;
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  ui.permissionSend.disabled = isChannel;
+  ui.permissionSend.checked = !isChannel;
+  ui.permissionInvite.checked = false;
+  ui.permissionManage.checked = false;
+  ui.roomFormSubtitle.textContent = isChannel
+    ? 'Создай канал для новостей и публикаций.'
+    : 'Настрой пространство для общения и пригласи участников.';
+  ui.roomCreateSubmit.firstElementChild.textContent = isChannel ? 'Создать канал' : 'Создать группу';
+}
+
+function openRoomCreation(kind) {
+  setRoomCreationType(kind);
+  ui.mainMenu.hidden = true;
+  ui.mainMenuButton.setAttribute('aria-expanded', 'false');
+  ui.roomDialog.showModal();
+}
+
+function toggleMainMenu(forceOpen) {
+  const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : ui.mainMenu.hidden;
+  ui.mainMenu.hidden = !shouldOpen;
+  ui.mainMenuButton.setAttribute('aria-expanded', String(shouldOpen));
+  if (shouldOpen) ui.mainMenu.querySelector('[role="menuitem"]')?.focus();
 }
 
 async function openRoom(room) {
@@ -1246,14 +1322,34 @@ ui.adminCode.addEventListener('keydown', (event) => {
     unlockAdminPanel();
   }
 });
-ui.createRoomButton.addEventListener('click', () => ui.roomDialog.showModal());
-ui.discoverRoomsButton.addEventListener('click', discoverRooms);
 ui.roomForm.addEventListener('submit', createRoom);
 ui.roomInviteForm.addEventListener('submit', inviteRoomMember);
-ui.roomKind.addEventListener('change', () => {
-  const channel = ui.roomKind.value === 'channel';
-  ui.permissionSend.disabled = channel;
-  if (channel) ui.permissionSend.checked = false;
+ui.mainMenuButton.addEventListener('click', () => toggleMainMenu());
+ui.roomTypeOptions.forEach((button) => {
+  button.addEventListener('click', () => setRoomCreationType(button.dataset.roomType));
+});
+ui.mainMenu.querySelectorAll('[data-menu-action]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const { menuAction } = button.dataset;
+    if (menuAction === 'group' || menuAction === 'channel') {
+      openRoomCreation(menuAction);
+      return;
+    }
+    toggleMainMenu(false);
+    if (menuAction === 'discover') discoverRooms();
+    if (menuAction === 'settings') openSettings();
+    if (menuAction === 'profile') {
+      ui.profileDisplayName.value = myProfile.display_name || '';
+      ui.profileBio.value = myProfile.bio || '';
+      ui.profileEmoji.value = myProfile.avatar_emoji || '';
+      ui.profileEditDialog.showModal();
+    }
+  });
+});
+document.addEventListener('click', (event) => {
+  if (!ui.mainMenu.hidden && !ui.mainMenu.contains(event.target) && !ui.mainMenuButton.contains(event.target)) {
+    toggleMainMenu(false);
+  }
 });
 document.querySelectorAll('[data-close-dialog]').forEach((button) => {
   button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close());
@@ -1279,6 +1375,11 @@ ui.search.addEventListener('input', () => {
 });
 ui.backButton.addEventListener('click', () => ui.messenger.classList.remove('chat-open'));
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !ui.mainMenu.hidden) {
+    toggleMainMenu(false);
+    ui.mainMenuButton.focus();
+    return;
+  }
   if (event.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
     event.preventDefault();
     ui.search.focus();
