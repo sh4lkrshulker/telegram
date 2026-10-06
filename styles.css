@@ -239,3 +239,59 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Sidebar controls keep settings separate from the connection indicator. */
+.sidebar-tools { display: flex; align-items: center; gap: 15px; }
+.settings-button, .settings-close { display: grid; place-items: center; padding: 0; color: #a5afa7; background: transparent; border: 1px solid transparent; cursor: pointer; transition: color 140ms, background 140ms, border-color 140ms; }
+.settings-button { width: 31px; height: 31px; border-radius: 7px; }
+.settings-button:hover, .settings-close:hover { color: var(--green); background: #252e28; border-color: #39443c; }
+.settings-button svg { width: 19px; height: 19px; }
+
+/* The native dialog stays above the chat and closes with Escape or its close button. */
+.settings-dialog { width: min(480px, calc(100vw - 30px)); max-width: 480px; max-height: min(760px, calc(100vh - 30px)); margin: auto; padding: 0; overflow: auto; color: var(--ink); background: #171c19; border: 1px solid #465148; border-radius: 10px; box-shadow: 0 30px 110px rgb(0 0 0 / 62%); }
+.settings-dialog::backdrop { background: rgb(4 7 5 / 74%); backdrop-filter: blur(6px); }
+.settings-surface { padding: 25px 27px 27px; }
+.settings-header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 20px; border-bottom: 1px solid #303a33; }
+.settings-header .eyebrow { color: var(--green); }
+.settings-header h2 { margin: 7px 0 0; color: #f1f2eb; font: 800 24px/1.2 "Manrope", sans-serif; }
+.settings-close { width: 34px; height: 34px; border-color: #374139; border-radius: 7px; }
+.settings-close svg { width: 19px; height: 19px; }
+.settings-group { padding: 20px 0; border-bottom: 1px solid #303a33; }
+.settings-group-copy h3, .settings-account > h3 { margin: 0; color: #e7ebe4; font: 700 12px "Manrope", sans-serif; }
+.settings-group-copy p { margin: 5px 0 0; color: #87938a; font-size: 10px; line-height: 1.5; }
+.accent-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.accent-option { min-height: 43px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 7px; color: #b1bab1; background: #202722; border: 1px solid #343f37; border-radius: 6px; cursor: pointer; font-size: 10px; transition: background 140ms, border-color 140ms, color 140ms; }
+.accent-option:hover, .accent-option.is-selected { color: #f0f2eb; background: #29322c; border-color: var(--accent-text, var(--green)); }
+.accent-swatch { width: 11px; height: 11px; flex: 0 0 auto; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
+.swatch-mint { color: #b5e66c; background: #b5e66c; }
+.swatch-amber { color: #f1c477; background: #f1c477; }
+.swatch-coral { color: #ff896b; background: #ff896b; }
+.settings-notifications { display: grid; gap: 15px; }
+.setting-toggle { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; }
+.setting-toggle > span:first-child { min-width: 0; display: grid; gap: 4px; }
+.setting-toggle strong { color: #dfe5dc; font-size: 11px; font-weight: 600; }
+.setting-toggle small { color: #88938a; font-size: 9px; line-height: 1.45; }
+.setting-toggle input { position: absolute; right: 0; width: 42px; height: 24px; margin: 0; opacity: 0; cursor: pointer; }
+.toggle-track { width: 38px; height: 22px; position: relative; flex: 0 0 auto; background: #343e37; border: 1px solid #4a554d; border-radius: 14px; transition: background 160ms, border-color 160ms; }
+.toggle-track::after { width: 14px; height: 14px; position: absolute; top: 3px; left: 3px; content: ""; background: #b5beb6; border-radius: 50%; transition: transform 160ms, background 160ms; }
+.setting-toggle input:checked + .toggle-track { background: var(--green-soft); border-color: var(--green-dark); }
+.setting-toggle input:checked + .toggle-track::after { background: var(--green); transform: translateX(16px); }
+.setting-toggle input:focus-visible + .toggle-track { outline: 2px solid var(--green); outline-offset: 3px; }
+.setting-toggle input:disabled + .toggle-track { opacity: .45; cursor: not-allowed; }
+.settings-account { padding-bottom: 0; border-bottom: 0; }
+.account-details { display: grid; gap: 0; margin: 10px 0 17px; }
+.account-details > div { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid #2c352f; }
+.account-details dt { color: #8e9990; font-size: 10px; }
+.account-details dd { max-width: 62%; margin: 0; overflow: hidden; color: #e4e9e1; text-align: right; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.signout-button { width: 100%; min-height: 39px; padding: 0 12px; color: #ffab96; text-align: left; background: #2a211f; border: 1px solid #52342d; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: 600; transition: background 140ms, border-color 140ms; }
+.signout-button:hover { background: #382520; border-color: #81513f; }
+.signout-button:disabled { opacity: .6; cursor: wait; }
+
+/* Keep settings touch-friendly and scrollable on narrow or short viewports. */
+@media (max-width: 520px) {
+  .settings-surface { padding: 21px 18px 20px; }
+  .settings-header { padding-bottom: 16px; }
+  .settings-group { padding: 17px 0; }
+  .accent-options { gap: 5px; }
+  .accent-option { gap: 5px; font-size: 9px; }
+}
