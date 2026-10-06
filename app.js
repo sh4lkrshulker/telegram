@@ -50,6 +50,7 @@ const ui = {
   authToggle: document.querySelector('#auth-toggle'),
   setupError: document.querySelector('#setup-error'),
   toast: document.querySelector('#toast'),
+  quickActions: document.querySelectorAll('.quick-action'),
 };
 
 // Состояние аккаунта и выбранного собеседника хранится на время работы страницы.
@@ -71,9 +72,8 @@ const ACCENT_COLORS = {
   coral: { main: '#ff896b', hover: '#e56e51', soft: '#3b2823', text: '#ffc1ae' },
 };
 
-// Настройки интерфейса хранятся отдельно для каждого аккаунта в текущем браузере.
 function preferenceStorageKey() {
-  return `linea-settings-${currentUser.id}`;
+  return `linea-settings-${currentUser?.id || 'guest'}`;
 }
 
 function savePreferences() {
@@ -124,8 +124,8 @@ function loadPreferences() {
     : Notification.permission === 'denied'
       ? 'Разреши уведомления для сайта в настройках браузера'
       : 'Показывать, когда вкладка неактивна';
-  ui.settingsUsername.textContent = `@${myProfile.username}`;
-  ui.settingsEmail.textContent = currentUser.email || 'Email не указан';
+  ui.settingsUsername.textContent = myProfile ? `@${myProfile.username}` : '—';
+  ui.settingsEmail.textContent = currentUser?.email || 'Email не указан';
 }
 
 function openSettings() {
@@ -267,7 +267,7 @@ function setAuthMode(mode) {
   ui.usernameInput.required = isSignup;
   ui.usernameNote.hidden = !isSignup;
   ui.setupCopy.textContent = isSignup
-    ? 'Укажи email для входа, придумай пароль и выбери имя, по которому тебя найдут друзья.'
+    ? 'Укажи email для входа, придумай пароль и выбер�� имя, по которому тебя найдут друзья.'
     : 'Введи email и пароль, указанные при регистрации.';
   ui.setupButtonLabel.textContent = isSignup ? 'Создать аккаунт' : 'Войти';
   ui.authToggle.textContent = isSignup ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться';
@@ -596,28 +596,39 @@ function renderMessages(messages) {
   ui.messages.scrollTop = ui.messages.scrollHeight;
 }
 
-// Отправляет сообщение выбранному человеку и очищает поле только после успеха.
-async function sendMessage(event) {
-  event.preventDefault();
-  const body = ui.messageInput.value.trim();
-  if (!body || !activeProfile) return;
+async function sendRawMessage(body) {
+  const text = body.trim();
+  if (!text || !activeProfile) {
+    if (!text) showToast('Пиши сообщение перед отправкой', true);
+    else showToast('Сначала выбери собеседника', true);
+    return false;
+  }
 
   const button = ui.messageForm.querySelector('button[type="submit"]');
   button.disabled = true;
   const { error } = await supabase.from('chat_messages').insert({
     sender_id: currentUser.id,
     recipient_id: activeProfile.user_id,
-    body,
+    body: text,
   });
   button.disabled = false;
+
   if (error) {
     showToast(`Сообщение не отправлено: ${error.message}`, true);
-    return;
+    return false;
   }
+
   ui.messageInput.value = '';
   updateCounter();
   await loadMessages();
   await loadChats();
+  return true;
+}
+
+// Отправляет сообщение выбранному человеку и очищает поле только после успеха.
+async function sendMessage(event) {
+  if (event) event.preventDefault();
+  await sendRawMessage(ui.messageInput.value);
 }
 
 // Supabase Realtime обновляет открытый чат и список диалогов без перезагрузки.
@@ -650,7 +661,7 @@ async function initialize() {
     /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(SUPABASE_PUBLISHABLE_KEY);
   if (!validProjectUrl || !validPublicKey) {
     setAuthMode('signup');
-    showSetup('В app.js укажи настоящий URL проекта и Publishable key из Supabase → Project Settings → API. Значение your-anon-key — только пример.');
+    showSetup('В app.js укажи настоящий URL проекта и Publishable key из Supabase → Project Settings → API. Значение your-anon-key — только пример, не рабочий ключ.');
     setConnection('error');
     return;
   }
@@ -743,6 +754,19 @@ ui.notificationSetting.addEventListener('change', async () => {
 ui.signoutButton.addEventListener('click', signOut);
 ui.messageForm.addEventListener('submit', sendMessage);
 ui.messageInput.addEventListener('input', updateCounter);
+ui.messageInput.addEventListener('keydown', (event) => {
+  const isSendShortcut = event.key === 'Enter' && !event.shiftKey;
+  const isFastSend = (event.metaKey || event.ctrlKey) && event.key === 'Enter';
+  if ((isSendShortcut || isFastSend) && !event.repeat) {
+    event.preventDefault();
+    sendRawMessage(ui.messageInput.value);
+  }
+});
+ui.quickActions.forEach((button) => {
+  button.addEventListener('click', () => {
+    sendRawMessage(button.dataset.quickMessage || '');
+  });
+});
 ui.search.addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(searchUsers, 180);
@@ -761,3 +785,4 @@ document.addEventListener('keydown', (event) => {
 // Запускаем подключение и повторяем его при восстановлении сети.
 window.addEventListener('online', initialize);
 initialize();
+
