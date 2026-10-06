@@ -19,6 +19,44 @@ const ui = {
   settingsUsername: document.querySelector('#settings-username'),
   settingsEmail: document.querySelector('#settings-email'),
   signoutButton: document.querySelector('#signout-button'),
+  pointsBalance: document.querySelector('#points-balance'),
+  editProfileButton: document.querySelector('#edit-profile-button'),
+  profileEditDialog: document.querySelector('#profile-edit-dialog'),
+  profileEditForm: document.querySelector('#profile-edit-form'),
+  profileDisplayName: document.querySelector('#profile-display-name'),
+  profileBio: document.querySelector('#profile-bio'),
+  profileEmoji: document.querySelector('#profile-emoji'),
+  profileButton: document.querySelector('#profile-button'),
+  profileDialog: document.querySelector('#profile-dialog'),
+  profileCard: document.querySelector('#profile-card'),
+  giftButton: document.querySelector('#gift-button'),
+  giftDialog: document.querySelector('#gift-dialog'),
+  giftRecipient: document.querySelector('#gift-recipient'),
+  giftBalance: document.querySelector('#gift-balance'),
+  giftOptions: document.querySelector('#gift-options'),
+  adminCode: document.querySelector('#admin-code'),
+  adminUnlockButton: document.querySelector('#admin-unlock-button'),
+  adminPanel: document.querySelector('#admin-panel'),
+  adminUsers: document.querySelector('#admin-users'),
+  adminUserCount: document.querySelector('#admin-user-count'),
+  createRoomButton: document.querySelector('#create-room-button'),
+  discoverRoomsButton: document.querySelector('#discover-rooms-button'),
+  roomList: document.querySelector('#room-list'),
+  roomDialog: document.querySelector('#room-dialog'),
+  roomForm: document.querySelector('#room-form'),
+  roomName: document.querySelector('#room-name'),
+  roomDescription: document.querySelector('#room-description'),
+  roomKind: document.querySelector('#room-kind'),
+  roomPublic: document.querySelector('#room-public'),
+  permissionSend: document.querySelector('#permission-send'),
+  permissionInvite: document.querySelector('#permission-invite'),
+  permissionManage: document.querySelector('#permission-manage'),
+  roomManageDialog: document.querySelector('#room-manage-dialog'),
+  roomManageTitle: document.querySelector('#room-manage-title'),
+  roomManageDescription: document.querySelector('#room-manage-description'),
+  roomInviteForm: document.querySelector('#room-invite-form'),
+  roomInviteUsername: document.querySelector('#room-invite-username'),
+  roomMembers: document.querySelector('#room-members'),
   myAvatar: document.querySelector('#my-avatar'),
   myUsername: document.querySelector('#my-username'),
   search: document.querySelector('#user-search'),
@@ -30,6 +68,7 @@ const ui = {
   conversation: document.querySelector('#conversation'),
   conversationAvatar: document.querySelector('#conversation-avatar'),
   conversationName: document.querySelector('#conversation-name'),
+  conversationKind: document.querySelector('#conversation-kind'),
   messages: document.querySelector('#messages'),
   messageForm: document.querySelector('#message-form'),
   messageInput: document.querySelector('#message-input'),
@@ -58,10 +97,13 @@ let supabase;
 let currentUser;
 let myProfile;
 let activeProfile;
+let activeRoom;
+let points = 0;
 let authMode = 'signup';
 let toastTimer;
 let searchTimer;
 let refreshTimer;
+let messageChannel;
 let preferences = { accent: 'mint', sound: false, notifications: false };
 const recentProfiles = new Map();
 
@@ -157,6 +199,7 @@ function playMessageSound() {
 
 function notifyIncomingMessage(message) {
   if (message.sender_id === currentUser.id || message.recipient_id !== currentUser.id) return;
+  if (message.message_type === 'gift') loadPoints();
   if (preferences.sound) playMessageSound();
   if (!preferences.notifications || !document.hidden || Notification.permission !== 'granted') return;
 
@@ -185,8 +228,11 @@ async function signOut() {
   currentUser = null;
   myProfile = null;
   activeProfile = null;
+  activeRoom = null;
+  points = 0;
   recentProfiles.clear();
   ui.settingsButton.hidden = true;
+  ui.pointsBalance.textContent = '0 ✦';
   ui.myAvatar.replaceWith(makeAvatar('?', 'avatar-small', 'my-avatar'));
   ui.myAvatar = document.querySelector('#my-avatar');
   ui.settingsDialog.close();
@@ -226,6 +272,15 @@ function makeAvatar(username, extraClass = '', id = '') {
   if (id) avatar.id = id;
   avatar.textContent = username.slice(0, 2).toUpperCase();
   avatar.setAttribute('aria-hidden', 'true');
+  return avatar;
+}
+
+function makeProfileAvatar(profile, extraClass = '', id = '') {
+  const avatar = makeAvatar(profile.username, extraClass, id);
+  if (profile.avatar_emoji) {
+    avatar.textContent = profile.avatar_emoji;
+    avatar.classList.add('avatar-emoji');
+  }
   return avatar;
 }
 
@@ -286,7 +341,9 @@ async function startApp(profile) {
   ui.setupScreen.hidden = true;
   setConnection('connected');
   loadPreferences();
+  await loadPoints();
   await loadChats();
+  await loadRooms();
   subscribeToMessages();
 }
 
@@ -295,7 +352,7 @@ async function startApp(profile) {
 async function getOrCreateProfile(user) {
   const { data: existingProfile, error } = await supabase
     .from('chat_profiles')
-    .select('user_id, username')
+    .select('user_id, username, display_name, bio, avatar_emoji')
     .eq('user_id', user.id)
     .maybeSingle();
   if (error || existingProfile) return { profile: existingProfile, error };
@@ -305,7 +362,7 @@ async function getOrCreateProfile(user) {
   const { data: profile, error: insertError } = await supabase
     .from('chat_profiles')
     .insert({ user_id: user.id, username })
-    .select('user_id, username')
+    .select('user_id, username, display_name, bio, avatar_emoji')
     .single();
   return { profile, error: insertError };
 }
@@ -413,7 +470,7 @@ async function loadChats() {
   if (peerIds.size) {
     const { data: profiles, error: profileError } = await supabase
       .from('chat_profiles')
-      .select('user_id, username')
+      .select('user_id, username, display_name, bio, avatar_emoji')
       .in('user_id', [...peerIds]);
     if (profileError) {
       setListMessage(ui.chatList, 'Не удалось загрузить пользователей.');
@@ -446,12 +503,12 @@ function makePersonRow(profile, isChat = false) {
   const row = document.createElement('button');
   row.type = 'button';
   row.className = `person-row${activeProfile?.user_id === profile.user_id ? ' is-active' : ''}`;
-  row.append(makeAvatar(profile.username));
+  row.append(makeProfileAvatar(profile));
 
   const copy = document.createElement('span');
   copy.className = 'person-copy';
   const name = document.createElement('strong');
-  name.textContent = `@${profile.username}`;
+  name.textContent = profile.display_name || `@${profile.username}`;
   copy.append(name);
   if (isChat && profile.lastMessage) {
     const preview = document.createElement('span');
@@ -501,7 +558,7 @@ async function searchUsers() {
   ui.searchHint.textContent = 'Ищем...';
   const { data, error } = await supabase
     .from('chat_profiles')
-    .select('user_id, username')
+    .select('user_id, username, display_name, bio, avatar_emoji')
     .ilike('username', `${query}%`)
     .neq('user_id', currentUser.id)
     .order('username')
@@ -524,10 +581,19 @@ async function searchUsers() {
 // Открывает личный диалог, показывает историю и переключает экран на телефоне.
 async function openConversation(profile) {
   activeProfile = profile;
+  activeRoom = null;
   recentProfiles.set(profile.user_id, profile);
-  ui.conversationName.textContent = `@${profile.username}`;
-  ui.conversationAvatar.replaceWith(makeAvatar(profile.username, '', 'conversation-avatar'));
+  ui.conversationName.textContent = profile.display_name || `@${profile.username}`;
+  ui.conversationAvatar.replaceWith(makeProfileAvatar(profile, '', 'conversation-avatar'));
   ui.conversationAvatar = document.querySelector('#conversation-avatar');
+  ui.profileButton.textContent = 'Профиль';
+  ui.profileButton.hidden = false;
+  ui.giftButton.hidden = false;
+  ui.conversationKind.textContent = 'личный диалог';
+  ui.messageInput.disabled = false;
+  ui.messageInput.placeholder = 'Напиши что-нибудь хорошее...';
+  ui.messageForm.querySelector('button[type="submit"]').disabled = false;
+  document.querySelector('.conversation-label').textContent = 'ЛИЧНОЕ';
   ui.emptyState.hidden = true;
   ui.conversation.hidden = false;
   ui.messenger.classList.add('chat-open');
@@ -538,13 +604,27 @@ async function openConversation(profile) {
 
 // Запрашивает только сообщения между пользователем и выбранным собеседником.
 async function loadMessages() {
+  if (activeRoom) {
+    const { data, error } = await supabase
+      .from('room_messages')
+      .select('id, sender_id, body, created_at')
+      .eq('room_id', activeRoom.id)
+      .order('created_at', { ascending: true })
+      .limit(500);
+    if (error) {
+      showToast(`Не удалось загрузить сообщения сообщества: ${error.message}`, true);
+      return;
+    }
+    renderMessages(data || []);
+    return;
+  }
   if (!activeProfile) return;
   const me = currentUser.id;
   const peer = activeProfile.user_id;
   const filter = `and(sender_id.eq.${me},recipient_id.eq.${peer}),and(sender_id.eq.${peer},recipient_id.eq.${me})`;
   const { data, error } = await supabase
     .from('chat_messages')
-    .select('id, sender_id, body, created_at')
+    .select('id, sender_id, body, created_at, message_type')
     .or(filter)
     .order('created_at', { ascending: true })
     .limit(500);
@@ -561,7 +641,9 @@ function renderMessages(messages) {
   if (!messages.length) {
     const note = document.createElement('p');
     note.className = 'conversation-note';
-    note.textContent = `Вы с @${activeProfile.username} ещё не переписывались. Самое время поздороваться!`;
+    note.textContent = activeRoom
+      ? 'В этом сообществе пока нет сообщений.'
+      : `Вы с @${activeProfile.username} ещё не переписывались. Самое время поздороваться!`;
     ui.messages.replaceChildren(note);
     return;
   }
@@ -581,7 +663,7 @@ function renderMessages(messages) {
 
     const row = document.createElement('article');
     const isMine = message.sender_id === currentUser.id;
-    row.className = `message-row${isMine ? ' is-mine' : ''}`;
+    row.className = `message-row${isMine ? ' is-mine' : ''}${message.message_type === 'gift' ? ' is-gift' : ''}`;
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
     bubble.textContent = message.body;
@@ -598,19 +680,21 @@ function renderMessages(messages) {
 
 async function sendRawMessage(body) {
   const text = body.trim();
-  if (!text || !activeProfile) {
+  if (!text || (!activeProfile && !activeRoom)) {
     if (!text) showToast('Пиши сообщение перед отправкой', true);
-    else showToast('Сначала выбери собеседника', true);
+    else showToast('Сначала выбери собеседника или сообщество', true);
     return false;
   }
 
   const button = ui.messageForm.querySelector('button[type="submit"]');
   button.disabled = true;
-  const { error } = await supabase.from('chat_messages').insert({
-    sender_id: currentUser.id,
-    recipient_id: activeProfile.user_id,
-    body: text,
-  });
+  const { error } = activeRoom
+    ? await supabase.from('room_messages').insert({ room_id: activeRoom.id, sender_id: currentUser.id, body: text })
+    : await supabase.from('chat_messages').insert({
+      sender_id: currentUser.id,
+      recipient_id: activeProfile.user_id,
+      body: text,
+    });
   button.disabled = false;
 
   if (error) {
@@ -633,7 +717,8 @@ async function sendMessage(event) {
 
 // Supabase Realtime обновляет открытый чат и список диалогов без перезагрузки.
 function subscribeToMessages() {
-  supabase
+  if (messageChannel) supabase.removeChannel(messageChannel);
+  messageChannel = supabase
     .channel(`messages-${currentUser.id}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, (payload) => {
       if (payload.eventType === 'INSERT' && payload.new) notifyIncomingMessage(payload.new);
@@ -642,6 +727,18 @@ function subscribeToMessages() {
         loadChats();
         loadMessages();
       }, 180);
+    })
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'chat_wallets',
+      filter: `user_id=eq.${currentUser.id}`,
+    }, loadPoints)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'room_messages' }, () => {
+      if (activeRoom) {
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(loadMessages, 180);
+      }
     })
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setConnection('error');
@@ -652,6 +749,383 @@ function subscribeToMessages() {
 // Обновляет счётчик длины поля сообщения.
 function updateCounter() {
   ui.messageCounter.textContent = `${ui.messageInput.value.length} / 2000`;
+}
+
+const GIFT_CATALOG = [
+  { code: 'rose', title: 'Роза', icon: '🌹', points: 10 },
+  { code: 'heart', title: 'Сердце', icon: '💝', points: 25 },
+  { code: 'star', title: 'Звезда', icon: '🌟', points: 50 },
+  { code: 'trophy', title: 'Трофей', icon: '🏆', points: 100 },
+];
+
+async function loadPoints() {
+  const { data, error } = await supabase
+    .from('chat_wallets')
+    .select('points')
+    .eq('user_id', currentUser.id)
+    .maybeSingle();
+  if (error) {
+    showToast(`Не удалось загрузить баланс очков: ${error.message}`, true);
+    return;
+  }
+  points = data?.points || 0;
+  ui.pointsBalance.textContent = `${points} ✦`;
+  ui.giftBalance.textContent = String(points);
+}
+
+async function openGiftPicker() {
+  if (!activeProfile) return;
+  await loadPoints();
+  ui.giftRecipient.textContent = `Выбери подарок для @${activeProfile.username}`;
+  ui.giftOptions.replaceChildren(...GIFT_CATALOG.map((gift) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'gift-option';
+    button.disabled = points < gift.points;
+    const icon = document.createElement('span');
+    icon.className = 'gift-icon';
+    icon.textContent = gift.icon;
+    const title = document.createElement('strong');
+    title.textContent = gift.title;
+    const cost = document.createElement('small');
+    cost.textContent = `${gift.points} очков`;
+    button.append(icon, title, cost);
+    button.addEventListener('click', () => sendGift(gift));
+    return button;
+  }));
+  ui.giftDialog.showModal();
+}
+
+async function sendGift(gift) {
+  const { error } = await supabase.rpc('send_chat_gift', {
+    p_recipient_id: activeProfile.user_id,
+    p_gift_code: gift.code,
+  });
+  if (error) {
+    showToast(`Не удалось отправить подарок: ${error.message}`, true);
+    return;
+  }
+  ui.giftDialog.close();
+  showToast(`${gift.icon} Подарок «${gift.title}» отправлен!`);
+  await loadPoints();
+  await loadMessages();
+  await loadChats();
+}
+
+function renderProfileCard(profile) {
+  ui.profileCard.replaceChildren();
+  const avatar = makeProfileAvatar(profile, 'profile-card-avatar');
+  const name = document.createElement('h3');
+  name.textContent = profile.display_name || `@${profile.username}`;
+  const username = document.createElement('p');
+  username.className = 'profile-card-username';
+  username.textContent = `@${profile.username}`;
+  const bio = document.createElement('p');
+  bio.className = 'profile-card-bio';
+  bio.textContent = profile.bio || 'Пользователь пока ничего не рассказал о себе.';
+  ui.profileCard.append(avatar, name, username, bio);
+  ui.profileDialog.showModal();
+}
+
+async function showActiveProfile() {
+  if (!activeProfile) return;
+  const { data, error } = await supabase
+    .from('chat_profiles')
+    .select('user_id, username, display_name, bio, avatar_emoji')
+    .eq('user_id', activeProfile.user_id)
+    .single();
+  if (error) {
+    showToast(`Не удалось открыть профиль: ${error.message}`, true);
+    return;
+  }
+  activeProfile = data;
+  recentProfiles.set(data.user_id, data);
+  renderProfileCard(data);
+}
+
+async function saveProfile(event) {
+  event.preventDefault();
+  const profile = {
+    display_name: ui.profileDisplayName.value.trim() || null,
+    bio: ui.profileBio.value.trim() || null,
+    avatar_emoji: ui.profileEmoji.value.trim() || null,
+  };
+  const { data, error } = await supabase
+    .from('chat_profiles')
+    .update(profile)
+    .eq('user_id', currentUser.id)
+    .select('user_id, username, display_name, bio, avatar_emoji')
+    .single();
+  if (error) {
+    showToast(`Не удалось сохранить профиль: ${error.message}`, true);
+    return;
+  }
+  myProfile = data;
+  ui.myAvatar.replaceWith(makeProfileAvatar(data, 'avatar-small', 'my-avatar'));
+  ui.myAvatar = document.querySelector('#my-avatar');
+  ui.myUsername.textContent = data.display_name || `@${data.username}`;
+  ui.profileEditDialog.close();
+  showToast('Профиль сохранён.');
+}
+
+async function unlockAdminPanel() {
+  const code = ui.adminCode.value;
+  const { data, error } = await supabase.rpc('admin_list_chat_users', { p_code: code });
+  if (error) {
+    showToast(`Не удалось открыть панель администратора: ${error.message}`, true);
+    return;
+  }
+  ui.adminPanel.hidden = false;
+  ui.adminUserCount.textContent = `Пользователи: ${data.length}`;
+  ui.adminUsers.replaceChildren(...data.map((user) => {
+    const row = document.createElement('div');
+    row.className = 'admin-user-row';
+    const identity = document.createElement('span');
+    identity.textContent = `${user.display_name || `@${user.username}`} · ${user.points} ✦`;
+    const amount = document.createElement('input');
+    amount.type = 'number';
+    amount.min = '1';
+    amount.max = '1000000';
+    amount.value = '100';
+    amount.setAttribute('aria-label', `Количество очков для @${user.username}`);
+    const grant = document.createElement('button');
+    grant.type = 'button';
+    grant.className = 'secondary-button';
+    grant.textContent = 'Выдать';
+    grant.addEventListener('click', async () => {
+      const value = Number(amount.value);
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        showToast('Укажи положительное целое количество очков.', true);
+        return;
+      }
+      const { error: grantError } = await supabase.rpc('admin_grant_chat_points', {
+        p_code: ui.adminCode.value,
+        p_target_user: user.user_id,
+        p_amount: value,
+      });
+      if (grantError) {
+        showToast(`Не удалось выдать очки: ${grantError.message}`, true);
+        return;
+      }
+      showToast(`Выдано ${value} очков пользователю @${user.username}.`);
+      await unlockAdminPanel();
+      if (user.user_id === currentUser.id) await loadPoints();
+    });
+    row.append(identity, amount, grant);
+    return row;
+  }));
+}
+
+function makeRoomRow(room, isDiscovery = false) {
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'person-row room-row';
+  const icon = document.createElement('span');
+  icon.className = 'room-icon';
+  icon.textContent = room.kind === 'channel' ? '📣' : '👥';
+  const copy = document.createElement('span');
+  copy.className = 'person-copy';
+  const title = document.createElement('strong');
+  title.textContent = room.title;
+  const summary = document.createElement('span');
+  summary.textContent = room.description || (room.kind === 'channel' ? 'Канал' : 'Группа');
+  copy.append(title, summary);
+  row.append(icon, copy);
+  if (isDiscovery) {
+    const join = document.createElement('span');
+    join.className = 'result-arrow';
+    join.textContent = '＋';
+    row.append(join);
+    row.addEventListener('click', async () => {
+      const { error } = await supabase.rpc('join_chat_room', { p_room_id: room.id });
+      if (error) showToast(`Не удалось вступить: ${error.message}`, true);
+      else {
+        showToast(`Вы вступили в «${room.title}».`);
+        await loadRooms();
+      }
+    });
+  } else {
+    row.addEventListener('click', () => openRoom(room));
+    row.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      openRoomManager(room);
+    });
+  }
+  return row;
+}
+
+async function loadRooms() {
+  const { data, error } = await supabase
+    .from('chat_room_members')
+    .select('role, permissions, room:chat_rooms(id, title, description, kind, is_public)')
+    .eq('user_id', currentUser.id);
+  if (error) {
+    showToast(`Не удалось загрузить группы и каналы: ${error.message}`, true);
+    return;
+  }
+  const rooms = (data || []).map((membership) => ({ ...membership.room, role: membership.role, permissions: membership.permissions }));
+  ui.roomList.replaceChildren(...rooms.map((room) => makeRoomRow(room)));
+}
+
+async function discoverRooms() {
+  const { data, error } = await supabase
+    .from('chat_rooms')
+    .select('id, title, description, kind')
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) {
+    showToast(`Не удалось загрузить каналы: ${error.message}`, true);
+    return;
+  }
+  if (!data.length) {
+    showToast('Публичных групп и каналов пока нет.');
+    return;
+  }
+  ui.roomList.replaceChildren(...data.map((room) => makeRoomRow(room, true)));
+}
+
+async function createRoom(event) {
+  event.preventDefault();
+  const permissions = {
+    can_send: ui.permissionSend.checked,
+    can_invite: ui.permissionInvite.checked,
+    can_manage: ui.permissionManage.checked,
+  };
+  const { data, error } = await supabase.rpc('create_chat_room', {
+    p_kind: ui.roomKind.value,
+    p_title: ui.roomName.value.trim(),
+    p_description: ui.roomDescription.value.trim(),
+    p_is_public: ui.roomPublic.checked,
+    p_permissions: permissions,
+  });
+  if (error) {
+    showToast(`Не удалось создать сообщество: ${error.message}`, true);
+    return;
+  }
+  ui.roomForm.reset();
+  ui.roomKind.value = 'group';
+  ui.permissionSend.disabled = false;
+  ui.roomDialog.close();
+  await loadRooms();
+  openRoom(data);
+}
+
+async function openRoom(room) {
+  activeRoom = room;
+  activeProfile = null;
+  ui.conversationName.textContent = room.title;
+  ui.conversationAvatar.replaceWith(makeProfileAvatar({
+    username: room.title,
+    avatar_emoji: room.kind === 'channel' ? '📣' : '👥',
+  }, '', 'conversation-avatar'));
+  ui.conversationAvatar = document.querySelector('#conversation-avatar');
+  ui.profileButton.textContent = 'Участники';
+  ui.profileButton.hidden = false;
+  ui.giftButton.hidden = true;
+  document.querySelector('.conversation-label').textContent = room.kind === 'channel' ? 'КАНАЛ' : 'ГРУППА';
+  ui.conversationKind.textContent = room.kind === 'channel' ? 'канал' : 'группа';
+  const canSend = room.owner_id === currentUser.id ||
+    ['owner', 'admin'].includes(room.role) || room.permissions?.can_send === true;
+  ui.messageInput.disabled = !canSend;
+  ui.messageInput.placeholder = canSend
+    ? 'Напиши что-нибудь хорошее...'
+    : 'У тебя нет права отправлять сообщения';
+  ui.messageForm.querySelector('button[type="submit"]').disabled = !canSend;
+  ui.emptyState.hidden = true;
+  ui.conversation.hidden = false;
+  ui.messenger.classList.add('chat-open');
+  await loadMessages();
+  ui.messageInput.focus();
+}
+
+async function openRoomManager(room = activeRoom) {
+  if (!room) return;
+  activeRoom = room;
+  ui.roomManageTitle.textContent = room.title;
+  ui.roomManageDescription.textContent = `${room.kind === 'channel' ? 'Канал' : 'Группа'} · ${room.description || 'Без описания'}`;
+  ui.roomMembers.replaceChildren();
+  const { data: ownMembership, error: ownError } = await supabase
+    .from('chat_room_members')
+    .select('role, permissions')
+    .eq('room_id', room.id)
+    .eq('user_id', currentUser.id)
+    .single();
+  if (ownError) {
+    showToast(`Не удалось проверить права: ${ownError.message}`, true);
+    return;
+  }
+  const canManage = room.owner_id === currentUser.id || ['owner', 'admin'].includes(ownMembership.role) || ownMembership.permissions?.can_manage;
+  const canInvite = canManage || ownMembership.permissions?.can_invite;
+  ui.roomInviteForm.hidden = !canInvite;
+  const { data, error } = await supabase
+    .from('chat_room_members')
+    .select('user_id, role, permissions, profile:chat_profiles(username)')
+    .eq('room_id', room.id);
+  if (error) {
+    showToast(`Не удалось загрузить участников: ${error.message}`, true);
+    return;
+  }
+  ui.roomMembers.replaceChildren(...data.map((member) => {
+    const row = document.createElement('div');
+    row.className = 'room-member-row';
+    const label = document.createElement('span');
+    label.textContent = `@${member.profile.username} · ${member.role}`;
+    row.append(label);
+    if (canManage && member.role !== 'owner' && member.user_id !== currentUser.id) {
+      const role = document.createElement('select');
+      role.setAttribute('aria-label', `Роль пользователя @${member.profile.username}`);
+      role.innerHTML = '<option value="member">Участник</option><option value="admin">Администратор</option>';
+      role.value = member.role === 'admin' ? 'admin' : 'member';
+      if (ownMembership.role !== 'owner') role.disabled = true;
+      const permissions = {};
+      for (const permission of ['can_send', 'can_invite', 'can_manage']) {
+        const labelText = { can_send: 'писать', can_invite: 'звать', can_manage: 'управлять' }[permission];
+        const permissionLabel = document.createElement('label');
+        permissionLabel.className = 'member-permission';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = member.permissions?.[permission] === true;
+        checkbox.dataset.permission = permission;
+        permissionLabel.append(checkbox, document.createTextNode(labelText));
+        row.append(permissionLabel);
+        permissions[permission] = checkbox;
+      }
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'secondary-button';
+      save.textContent = 'Сохранить права';
+      save.addEventListener('click', async () => {
+        const { error: updateError } = await supabase.rpc('update_chat_room_member', {
+          p_room_id: room.id,
+          p_target_user: member.user_id,
+          p_role: role.value,
+          p_permissions: Object.fromEntries(Object.entries(permissions).map(([key, input]) => [key, input.checked])),
+        });
+        if (updateError) showToast(`Не удалось изменить права: ${updateError.message}`, true);
+        else showToast(`Права @${member.profile.username} обновлены.`);
+      });
+      row.append(role, save);
+    }
+    return row;
+  }));
+  ui.roomManageDialog.showModal();
+}
+
+async function inviteRoomMember(event) {
+  event.preventDefault();
+  if (!activeRoom) return;
+  const { error } = await supabase.rpc('invite_chat_room_member', {
+    p_room_id: activeRoom.id,
+    p_username: ui.roomInviteUsername.value.trim().toLowerCase(),
+  });
+  if (error) {
+    showToast(`Не удалось добавить участника: ${error.message}`, true);
+    return;
+  }
+  ui.roomInviteUsername.value = '';
+  showToast('Участник добавлен.');
+  await openRoomManager();
 }
 
 // Восстанавливает сессию пользователя и создаёт профиль после подтверждения email.
@@ -752,6 +1226,38 @@ ui.notificationSetting.addEventListener('change', async () => {
   }
 });
 ui.signoutButton.addEventListener('click', signOut);
+ui.editProfileButton.addEventListener('click', () => {
+  ui.profileDisplayName.value = myProfile.display_name || '';
+  ui.profileBio.value = myProfile.bio || '';
+  ui.profileEmoji.value = myProfile.avatar_emoji || '';
+  ui.settingsDialog.close();
+  ui.profileEditDialog.showModal();
+});
+ui.profileEditForm.addEventListener('submit', saveProfile);
+ui.profileButton.addEventListener('click', () => {
+  if (activeRoom) openRoomManager();
+  else showActiveProfile();
+});
+ui.giftButton.addEventListener('click', openGiftPicker);
+ui.adminUnlockButton.addEventListener('click', unlockAdminPanel);
+ui.adminCode.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    unlockAdminPanel();
+  }
+});
+ui.createRoomButton.addEventListener('click', () => ui.roomDialog.showModal());
+ui.discoverRoomsButton.addEventListener('click', discoverRooms);
+ui.roomForm.addEventListener('submit', createRoom);
+ui.roomInviteForm.addEventListener('submit', inviteRoomMember);
+ui.roomKind.addEventListener('change', () => {
+  const channel = ui.roomKind.value === 'channel';
+  ui.permissionSend.disabled = channel;
+  if (channel) ui.permissionSend.checked = false;
+});
+document.querySelectorAll('[data-close-dialog]').forEach((button) => {
+  button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close());
+});
 ui.messageForm.addEventListener('submit', sendMessage);
 ui.messageInput.addEventListener('input', updateCounter);
 ui.messageInput.addEventListener('keydown', (event) => {
@@ -785,4 +1291,3 @@ document.addEventListener('keydown', (event) => {
 // Запускаем подключение и повторяем его при восстановлении сети.
 window.addEventListener('online', initialize);
 initialize();
-

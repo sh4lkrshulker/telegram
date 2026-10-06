@@ -36,7 +36,7 @@
             <span class="eyebrow">Вы в сети как</span>
             <strong id="my-username">Подключаемся...</strong>
           </div>
-          <span class="online-dot" aria-hidden="true"></span>
+          <span id="points-balance" class="points-balance" title="Ваши очки">0 ✦</span>
         </section>
 
         <section class="people-section" aria-labelledby="people-heading">
@@ -61,6 +61,11 @@
           <div id="chat-list" class="people-list chat-list" aria-live="polite">
             <p class="list-placeholder">Здесь появятся ваши диалоги</p>
           </div>
+          <div class="room-actions">
+            <button id="create-room-button" class="secondary-button" type="button">＋ Создать группу / канал</button>
+            <button id="discover-rooms-button" class="secondary-button" type="button">Найти каналы</button>
+          </div>
+          <div id="room-list" class="people-list room-list" aria-live="polite"></div>
         </section>
 
         <footer class="sidebar-footer">
@@ -91,8 +96,9 @@
             <div id="conversation-avatar" class="avatar">?</div>
             <div class="conversation-person">
               <h2 id="conversation-name">Пользователь</h2>
-              <p><span class="online-dot"></span>личный диалог</p>
+              <p><span class="online-dot"></span><span id="conversation-kind">личный диалог</span></p>
             </div>
+            <button id="profile-button" class="header-action" type="button">Профиль</button>
             <span class="conversation-label">ЛИЧНОЕ</span>
           </header>
           <div id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions text"></div>
@@ -108,6 +114,7 @@
               <input id="message-input" type="text" maxlength="2000" placeholder="Напиши что-нибудь хорошее..." autocomplete="off" />
             </label>
             <span id="message-counter" class="message-counter">0 / 2000</span>
+            <button id="gift-button" class="gift-button" type="button" aria-label="Отправить подарок" title="Подарки">🎁</button>
             <button class="send-button" type="submit" aria-label="Отправить сообщение" title="Отправить сообщение">
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m21 3-7.2 18-3.7-7.1L3 10.2 21 3Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
@@ -159,12 +166,99 @@
 
         <section class="settings-group settings-account" aria-labelledby="account-heading">
           <h3 id="account-heading">Аккаунт</h3>
+          <button id="edit-profile-button" class="secondary-button profile-edit-button" type="button">Настроить профиль</button>
           <dl class="account-details">
             <div><dt>Имя в чате</dt><dd id="settings-username">—</dd></div>
             <div><dt>Email для входа</dt><dd id="settings-email">—</dd></div>
           </dl>
           <button id="signout-button" class="signout-button" type="button">Выйти из аккаунта</button>
         </section>
+        <section class="settings-group admin-access" aria-labelledby="admin-heading">
+          <div class="settings-group-copy">
+            <h3 id="admin-heading">Панель администратора</h3>
+            <p>Вход по общему коду доступа</p>
+          </div>
+          <div class="admin-unlock">
+            <input id="admin-code" type="password" placeholder="Код администратора" autocomplete="off" aria-label="Код администратора" />
+            <button id="admin-unlock-button" class="secondary-button" type="button">Войти</button>
+          </div>
+          <div id="admin-panel" class="admin-panel" hidden>
+            <p id="admin-user-count" class="admin-user-count"></p>
+            <div id="admin-users" class="admin-users"></div>
+          </div>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog id="gift-dialog" class="settings-dialog feature-dialog" aria-labelledby="gift-title">
+      <div class="settings-surface">
+        <header class="settings-header">
+          <div><p class="eyebrow">ТЁПЛЫЙ ЖЕСТ</p><h2 id="gift-title">Подарки</h2></div>
+          <button class="settings-close" data-close-dialog="gift-dialog" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <p id="gift-recipient" class="feature-description"></p>
+        <p class="gift-balance">Баланс: <strong id="gift-balance">0</strong> ✦</p>
+        <div id="gift-options" class="gift-options"></div>
+      </div>
+    </dialog>
+
+    <dialog id="profile-dialog" class="settings-dialog feature-dialog" aria-labelledby="profile-dialog-title">
+      <div class="settings-surface profile-surface">
+        <header class="settings-header">
+          <div><p class="eyebrow">ПРОФИЛЬ</p><h2 id="profile-dialog-title">Профиль</h2></div>
+          <button class="settings-close" data-close-dialog="profile-dialog" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div id="profile-card" class="profile-card"></div>
+      </div>
+    </dialog>
+
+    <dialog id="profile-edit-dialog" class="settings-dialog feature-dialog" aria-labelledby="profile-edit-title">
+      <form id="profile-edit-form" class="settings-surface">
+        <header class="settings-header">
+          <div><p class="eyebrow">ПЕРСОНАЛИЗАЦИЯ</p><h2 id="profile-edit-title">Настроить профиль</h2></div>
+          <button class="settings-close" data-close-dialog="profile-edit-dialog" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <label class="feature-field"><span>Отображаемое имя</span><input id="profile-display-name" maxlength="40" placeholder="Как к тебе обращаться?" /></label>
+        <label class="feature-field"><span>О себе</span><textarea id="profile-bio" maxlength="240" rows="3" placeholder="Пара слов о себе"></textarea></label>
+        <label class="feature-field"><span>Эмодзи аватара</span><input id="profile-emoji" maxlength="4" placeholder="🙂" /></label>
+        <button class="setup-button" type="submit">Сохранить профиль</button>
+      </form>
+    </dialog>
+
+    <dialog id="room-dialog" class="settings-dialog feature-dialog" aria-labelledby="room-title">
+      <form id="room-form" class="settings-surface">
+        <header class="settings-header">
+          <div><p class="eyebrow">НОВОЕ СООБЩЕСТВО</p><h2 id="room-title">Группа или канал</h2></div>
+          <button class="settings-close" data-close-dialog="room-dialog" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <label class="feature-field"><span>Название</span><input id="room-name" maxlength="60" required placeholder="Например, Книжный клуб" /></label>
+        <label class="feature-field"><span>Описание</span><textarea id="room-description" maxlength="240" rows="2" placeholder="О чём это сообщество?"></textarea></label>
+        <label class="feature-field"><span>Тип</span>
+          <select id="room-kind"><option value="group">Группа — общение участников</option><option value="channel">Канал — публикации и подписчики</option></select>
+        </label>
+        <label class="feature-check"><input id="room-public" type="checkbox" checked /> Публичное сообщество — можно найти и вступить</label>
+        <fieldset class="permission-fields">
+          <legend>Права участников (для группы)</legend>
+          <label class="feature-check"><input id="permission-send" type="checkbox" checked /> Отправлять сообщения</label>
+          <label class="feature-check"><input id="permission-invite" type="checkbox" /> Приглашать участников</label>
+          <label class="feature-check"><input id="permission-manage" type="checkbox" /> Управлять сообществом</label>
+        </fieldset>
+        <button class="setup-button" type="submit">Создать</button>
+      </form>
+    </dialog>
+
+    <dialog id="room-manage-dialog" class="settings-dialog feature-dialog" aria-labelledby="room-manage-title">
+      <div class="settings-surface">
+        <header class="settings-header">
+          <div><p class="eyebrow">УЧАСТНИКИ И ПРАВА</p><h2 id="room-manage-title">Сообщество</h2></div>
+          <button class="settings-close" data-close-dialog="room-manage-dialog" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <p id="room-manage-description" class="feature-description"></p>
+        <form id="room-invite-form" class="admin-unlock">
+          <input id="room-invite-username" maxlength="20" placeholder="Имя пользователя" aria-label="Имя пользователя" />
+          <button class="secondary-button" type="submit">Добавить</button>
+        </form>
+        <div id="room-members" class="admin-users"></div>
       </div>
     </dialog>
 
@@ -200,4 +294,3 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>
 </html>
-
